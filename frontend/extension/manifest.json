@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Live Explanation",
+  "version": "1.0.0",
+  "description": "Real-time explanation for browser video content",
+  "action": {
+    "default_title": "Live Explanation",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.ts"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*/*"],
+      "js": ["content_script.ts"]
+    }
+  ],
+  "permissions": ["tabs"],
+  "host_permissions": ["http://localhost:8000/*"]
+}
