@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES6",
+    "lib": ["ES6", "DOM"],
+    "types": ["chrome"],
+    "strict": true,
+    "outDir": "dist",
+    "noEmit": false
+  },
+  "include": [
+    "content_script.tsx",
+    "background.ts"
+  ]
+}
