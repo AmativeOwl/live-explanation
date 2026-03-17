@@ -4,7 +4,7 @@
     "lib": ["ES6", "DOM"],
     "types": ["chrome"],
     "strict": true,
-    "outDir": "dist",
+    "outDir": ".",
     "noEmit": false
   },
   "include": [
