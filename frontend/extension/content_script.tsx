@@ -13,23 +13,27 @@ const attachToVideo = (): void => {
   const audioContext = new AudioContext();
   const source: MediaElementAudioSourceNode =
     audioContext.createMediaElementSource(video);
-  const processor: ScriptProcessorNode = audioContext.createScriptProcessor(
-    4096,
-    1,
-    1,
-  );
 
-  source.connect(processor);
-  processor.connect(audioContext.destination);
+  // AudioWorklet replaces the deprecated ScriptProcessorNode
+  audioContext.audioWorklet
+    .addModule(chrome.runtime.getURL("audio_processor.js"))
+    .then(() => {
+      const workletNode = new AudioWorkletNode(audioContext, "audio-processor");
 
-  processor.onaudioprocess = (event: AudioProcessingEvent): void => {
-    const chunk: Float32Array = event.inputBuffer.getChannelData(0);
+      source.connect(workletNode);
+      workletNode.connect(audioContext.destination);
 
-    chrome.runtime.sendMessage({
-      type: "AUDIO_CHUNK",
-      data: Array.from(chunk),
-    });
-  };
+      // receive processed chunks from the worklet
+      workletNode.port.onmessage = (event: MessageEvent): void => {
+        const chunk: Float32Array = event.data;
+
+        chrome.runtime.sendMessage({
+          type: "AUDIO_CHUNK",
+          data: Array.from(chunk),
+        });
+      };
+    })
+    .catch((err) => console.error("AudioWorklet failed to load:", err));
 };
 
 // run when page loads

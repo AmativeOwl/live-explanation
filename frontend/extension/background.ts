@@ -19,11 +19,9 @@ const connectWebSocket = (): void => {
   };
 };
 
-// listen for messages from content script
 chrome.runtime.onMessage.addListener((message): void => {
   if (message.type === "AUDIO_CHUNK") {
     if (socket && socket.readyState === WebSocket.OPEN) {
-      // convert array back to Float32Array and send as binary
       const chunk = new Float32Array(message.data);
       socket.send(chunk.buffer);
     } else {
@@ -32,5 +30,4 @@ chrome.runtime.onMessage.addListener((message): void => {
   }
 });
 
-// connect on startup
 connectWebSocket();
