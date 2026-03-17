@@ -12,18 +12,18 @@
     }
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "dist/background.js"
   },
   "content_scripts": [
     {
       "matches": ["https://*/*"],
-      "js": ["content_script.js"]
+      "js": ["dist/content_script.js"]
     }
   ],
   "permissions": ["tabs", "scripting"],
   "host_permissions": ["http://localhost:8000/*"],
   "web_accessible_resources": [{
-    "resources": ["audio_processor.js"],
+    "resources": ["audio_processor.js", "dist/content_script.js"],
     "matches": ["<all_urls>"]
   }]
 }
