@@ -1,6 +1,6 @@
 from faster_whisper import WhisperModel  # type: ignore
 
-# load model once at startup — not per request
+# instantiate model once at startup — not per request
 print("Loading Whisper model...")
 model = WhisperModel(
     model_size_or_path="tiny",  # swap to "base" or "small" for better accuracy
