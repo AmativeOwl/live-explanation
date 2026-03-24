@@ -2,6 +2,9 @@ import asyncio
 import time
 import numpy as np
 from faster_whisper import WhisperModel  # type: ignore
+from fastapi import FastAPI, WebSocket
+from fastapi.websockets import WebSocketDisconnect
+from contextlib import asynccontextmanager
 
 # model
 print("Loading Whisper model...")
@@ -52,3 +55,60 @@ async def transcription_pipeline() -> None:
             print(f"Complete sentence ready for LLM: {sentence}")
             sentence_buffer = ""  # reset buffer
             # TODO: pass sentence to LLM layer in Phase 4
+
+
+# lifespan
+@asynccontextmanager
+async def lifespan(app: FastAPI):  # type: ignore
+    """Start the transcription pipeline when the server starts."""
+    asyncio.create_task(transcription_pipeline())
+    print("Transcription pipeline started.")
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+# status endpoint
+@app.get("/status")
+async def status() -> dict[str, str]:
+    """Health check endpoint."""
+    return {"status": "ok"}
+
+
+# WebSocket - React frontend
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket) -> None:
+    """Accepts WebSocket connections from the React frontend."""
+    await websocket.accept()
+    print("React frontend connected.")
+    try:
+        while True:
+            # receive raw audio bytes from frontend
+            data: bytes = await websocket.receive_bytes()
+
+            # convert bytes to numpy array and add to queue
+            chunk = np.frombuffer(data, dtype=np.float32)
+            await audio_queue.put(chunk)
+
+    except WebSocketDisconnect:
+        print("React frontend disconnected.")
+
+
+# WebSocket - Chrome Extension
+@app.websocket("/audio")
+async def audio_endpoint(websocket: WebSocket) -> None:
+    """Accepts WebSocket connections from the Chrome Extension."""
+    await websocket.accept()
+    print("Chrome extension connected.")
+    try:
+        while True:
+            # receive raw audio bytes from extension
+            data: bytes = await websocket.receive_bytes()
+
+            # convert bytes to numpy array and add to queue
+            chunk = np.frombuffer(data, dtype=np.float32)
+            await audio_queue.put(chunk)
+
+    except WebSocketDisconnect:
+        print("Chrome extension disconnected.")
