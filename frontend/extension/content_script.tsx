@@ -1,6 +1,10 @@
 /// <reference types="chrome"/>
 
+let isAttached = false;
+
 const attachToVideo = (): void => {
+  if (isAttached) return;
+
   const video = document.querySelector<HTMLVideoElement>("video");
 
   if (!video) {
@@ -8,22 +12,35 @@ const attachToVideo = (): void => {
     return;
   }
 
+  isAttached = true;
+
   console.log("Video found, attaching audio capture...");
 
   const audioContext = new AudioContext();
+
+  // Ensure the AudioContext is running (may require user interaction in some cases)
+  audioContext.resume();
+
   const source: MediaElementAudioSourceNode =
     audioContext.createMediaElementSource(video);
 
-  // AudioWorklet replaces the deprecated ScriptProcessorNode
+  // Load the AudioWorklet processor
   audioContext.audioWorklet
     .addModule(chrome.runtime.getURL("audio_processor.js"))
     .then(() => {
-      const workletNode = new AudioWorkletNode(audioContext, "audio-processor");
+      // Create a worklet node with no outputs so it cannot affect playback
+      const workletNode = new AudioWorkletNode(audioContext, "audio-processor", {
+        numberOfInputs: 1,
+        numberOfOutputs: 0,
+      });
 
+      // Connect source to worklet for capture only
       source.connect(workletNode);
-      workletNode.connect(audioContext.destination);
 
-      // receive processed chunks from the worklet
+      // Connect source directly to destination for original playback
+      source.connect(audioContext.destination);
+
+      // Receive captured audio chunks from the worklet
       workletNode.port.onmessage = (event: MessageEvent): void => {
         const chunk: Float32Array = event.data;
 
@@ -36,9 +53,9 @@ const attachToVideo = (): void => {
     .catch((err) => console.error("AudioWorklet failed to load:", err));
 };
 
-// run when page loads
+// Run when page loads
 attachToVideo();
 
-// watch for dynamically added video elements (e.g. YouTube SPA behaviour)
+// Observe DOM changes to handle dynamically added video elements (e.g. YouTube SPA)
 const observer = new MutationObserver(attachToVideo);
 observer.observe(document.body, { childList: true, subtree: true });
