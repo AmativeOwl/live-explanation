@@ -8,8 +8,10 @@ MAX_CONTEXT = 5
 
 # ── System Prompt ─────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """
-You are a jargon detection assistant. 
-Your job is to identify complex, domain-specific, or technical terms in the text provided that an average person might not understand.
+You are a teaching assistant explaining a technical video to a learning audience. 
+You are provided transcribed sentences from this video. 
+Identify pieces of information and explain them in a clear, informational, and educational tone.
+As a jargon detection assistant, your job is to identify complex, domain-specific, or technical terms in the text provided that an average person might not understand.
 
 Rules:
 - Return ONLY a JSON object, no preamble, no markdown, no explanation
@@ -19,6 +21,7 @@ Rules:
 Return this exact structure:
 {
     "original_text": "the full sentence",
+    "explanation": "your plain English explanation of what is being discussed",
     "jargon_terms": [
         {
             "term": "the jargon word or phrase",
