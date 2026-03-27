@@ -1,10 +1,13 @@
 import asyncio
+from dotenv import load_dotenv
 import time
 import numpy as np
 from faster_whisper import WhisperModel  # type: ignore
 from fastapi import FastAPI, WebSocket
 from fastapi.websockets import WebSocketDisconnect
 from contextlib import asynccontextmanager
+
+load_dotenv()
 
 # model
 print("Loading Whisper model...")
