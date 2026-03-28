@@ -1,11 +1,13 @@
 import asyncio
+from dotenv import load_dotenv
 import time
 import numpy as np
 from faster_whisper import WhisperModel  # type: ignore
 from fastapi import FastAPI, WebSocket
 from fastapi.websockets import WebSocketDisconnect
 from contextlib import asynccontextmanager
-from llm import get_teaching_explanation  # type: ignore
+
+load_dotenv()
 
 # model
 print("Loading Whisper model...")
@@ -54,13 +56,8 @@ async def transcription_pipeline() -> None:
         if is_sentence_boundary(sentence_buffer):
             sentence = sentence_buffer.strip()
             print(f"Complete sentence ready for LLM: {sentence}")
-            sentence_buffer = ""
-    
-            # call LLM layer
-            result: dict[str, object] = await get_teaching_explanation(sentence) # type: ignore
-            print(f"Teaching explanation: {result}")
-    
-            # TODO: send result back to Chrome extension via WebSocket
+            sentence_buffer = ""  # reset buffer
+            # TODO: pass sentence to LLM layer in Phase 4
 
 
 # lifespan

@@ -1,60 +1,63 @@
 import json
-import time
-import litellm  
-import config  # type: ignore
+from litellm import completion  # type: ignore
 
+# ── Context Window ────────────────────────────────────────────────────────────
+# keeps the last 3-5 sentences for context
+context_window: list[str] = []
+MAX_CONTEXT = 5
+
+# ── System Prompt ─────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """
-You are a teaching assistant explaining a technical video to an audience who would like to learn. 
+You are a teaching assistant explaining a technical video to a learning audience. 
 You are provided transcribed sentences from this video. 
-     
-Define any jargon or technical terms separately and explain them in context with the main explanation.
+Identify pieces of information and explain them in a clear, informational, and educational tone.
+As a jargon detection assistant, your job is to identify complex, domain-specific, or technical terms in the text provided that an average person might not understand.
 
-Return ONLY a valid JSON object with no markdown, no code blocks, and no additional text. Use exactly this structure:
+Rules:
+- Return ONLY a JSON object, no preamble, no markdown, no explanation
+- If no jargon is found, return an empty jargon_terms array
+- Keep explanations short, clear and simple (1-2 sentences max)
 
+Return this exact structure:
 {
-  "original_text": "the transcribed sentence you were given",
-  "teaching": {
-    "explanation":,,
-    "terms": [
-      {
-        "term": "the jargon term",
-        "definition": "plain English definition of the term",
-        "type": "jargon"
-      }
+    "original_text": "the full sentence",
+    "explanation": "your plain English explanation of what is being discussed",
+    "jargon_terms": [
+        {
+            "term": "the jargon word or phrase",
+            "explanation": "plain English explanation",
+            "confidence": 0.9
+        }
     ]
-  },
-  "timestamp": 0
 }
-
-If no jargon terms are identified, return an empty array for terms. The timestamp field should be left as 0 — it will be set by the application.
 """
 
-litellm.api_key = config.GEMINI_API_KEY
 
-async def get_teaching_explanation(sentence: str) -> dict: # type: ignore
-    """Takes a transcribed sentence and returns a teaching explanation as a dict."""
+async def detect_jargon(sentence: str) -> dict[str, object]:
+    """Send a sentence to the LLM and get back detected jargon with explanations."""
 
-    response = await litellm.acompletion(  # type: ignore
-        model="gemini/gemini-2.0-flash",
+    # add sentence to context window
+    context_window.append(sentence)
+    if len(context_window) > MAX_CONTEXT:
+        context_window.pop(0)
+
+    context = " ".join(context_window[:-1])
+
+    user_message = f"""
+Context (recent sentences): {context if context else "None"}
+
+Current sentence to analyse: {sentence}
+"""
+
+    response = completion(  # type: ignore
+        model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": sentence}
+            {"role": "user", "content": user_message},
         ],
+        response_format={"type": "json_object"},
+        fallbacks=["gemini/gemini-1.5-flash"],
     )
 
-    raw: str = response.choices[0].message.content # type: ignore
-    
-    try:
-        result: dict = json.loads(raw) # type: ignore
-    except json.JSONDecodeError:
-        result = { # type: ignore
-            "original_text": sentence,
-            "teaching": {
-                "explanation": raw,
-                "terms": []
-            },
-            "timestamp": 0
-        }
-
-    result["timestamp"] = int(time.time())
-    return result # type: ignore
+    result: dict[str, object] = json.loads(response.choices[0].message.content)  # type: ignore
+    return result
