@@ -1,5 +1,6 @@
 import json
-from litellm import completion  # type: ignore
+import os
+from litellm import acompletion  # type: ignore
 
 # ── Context Window ────────────────────────────────────────────────────────────
 # keeps the last 3-5 sentences for context
@@ -33,6 +34,40 @@ Return this exact structure:
 """
 
 
+def _is_configured(key: str | None) -> bool:
+    """True if `key` looks like a real credential — not unset, blank/whitespace,
+    or an unfilled placeholder value (e.g. "your-openai-key-here")."""
+    if key is None:
+        return False
+    value = key.strip()
+    if not value:
+        return False
+    return "your-" not in value.lower()
+
+
+def _build_model_chain() -> list[str]:
+    """Orders candidate models by which API keys are actually configured in the
+    environment, so we never waste a call on a provider we know has no real
+    credentials. litellm's `fallbacks=` still handles the "key exists but the
+    call fails anyway" case (rate limits, no credits, etc.) for whichever
+    providers ARE configured.
+    """
+    chain: list[str] = []
+    if _is_configured(os.getenv("OPENAI_API_KEY")):
+        chain.append("gpt-4o-mini")
+    if _is_configured(os.getenv("GEMINI_API_KEY")):
+        # "gemini-flash-latest" always points at Google's current GA flash
+        # model, unlike a dated model id (e.g. gemini-1.5-flash), which gets
+        # shut down and starts 404ing within a year or so.
+        chain.append("gemini/gemini-flash-latest")
+
+    if not chain:
+        raise RuntimeError(
+            "No LLM API key configured — set OPENAI_API_KEY or GEMINI_API_KEY in .env"
+        )
+    return chain
+
+
 async def detect_jargon(sentence: str) -> dict[str, object]:
     """Send a sentence to the LLM and get back detected jargon with explanations."""
 
@@ -49,14 +84,16 @@ Context (recent sentences): {context if context else "None"}
 Current sentence to analyse: {sentence}
 """
 
-    response = completion(  # type: ignore
-        model="gpt-4o-mini",
+    model_chain = _build_model_chain()
+
+    response = await acompletion(  # type: ignore
+        model=model_chain[0],
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ],
         response_format={"type": "json_object"},
-        fallbacks=["gemini/gemini-1.5-flash"],
+        fallbacks=model_chain[1:],
     )
 
     result: dict[str, object] = json.loads(response.choices[0].message.content)  # type: ignore
