@@ -56,10 +56,12 @@ def _build_model_chain() -> list[str]:
     if _is_configured(os.getenv("OPENAI_API_KEY")):
         chain.append("gpt-4o-mini")
     if _is_configured(os.getenv("GEMINI_API_KEY")):
-        # "gemini-flash-latest" always points at Google's current GA flash
-        # model, unlike a dated model id (e.g. gemini-1.5-flash), which gets
-        # shut down and starts 404ing within a year or so.
-        chain.append("gemini/gemini-flash-latest")
+        # "gemini-flash-lite-latest" auto-updates like "gemini-flash-latest"
+        # (never goes stale), but stays on the Flash-Lite tier. The full Flash
+        # tier's free quota is throttled hardest on whichever model is newest —
+        # gemini-flash-latest currently resolves to gemini-3.5-flash, which
+        # free-tier caps at just 20 requests/day. Flash-Lite gets ~1,000+/day.
+        chain.append("gemini/gemini-flash-lite-latest")
 
     if not chain:
         raise RuntimeError(

@@ -78,6 +78,6 @@ Use a **separate Chrome profile** for testing, not your main one — this extens
 
 - ✅ Audio capture (extension → backend over WebSocket)
 - ✅ Real-time transcription (faster-whisper, `base` model, VAD-filtered)
-- 🚧 LLM jargon detection (`backend/llm.py` exists but isn't yet wired into the pipeline)
+- ✅ LLM jargon detection (with space for possible improvements)
 - 🚧 Streaming explanations back to the frontend
 - 🚧 React sidebar/overlay UI
