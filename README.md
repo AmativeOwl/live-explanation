@@ -81,3 +81,13 @@ Use a **separate Chrome profile** for testing, not your main one — this extens
 - ✅ LLM jargon detection (with space for possible improvements)
 - 🚧 Streaming explanations back to the frontend
 - 🚧 React sidebar/overlay UI
+
+## How the frotend may look like (The goal)
+
+Attaches itself to videos in full screen, acts as a sidebar
+outside of full screen independent of the video.
+
+Contains a button to adjust latency, which determines
+how fast they want explanations. High latency = more accumulated context per LLM message and slower speeds
+
+Perhaps we can add a translation button.
