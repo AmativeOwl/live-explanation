@@ -34,11 +34,15 @@ VAD_OPTIONS = VadOptions(
 # rather than let it grow unbounded
 MAX_IDLE_BUFFER_SECONDS = 5
 
-# LLM dispatch buffer: merges consecutive confirmed utterances so short/filler
-# ones (e.g. "No, no, no, no.") aren't sent to the LLM on their own. Dispatches
-# once there's enough content OR enough time has passed, whichever comes first.
-MIN_DISPATCH_WORDS = 12
-MAX_DISPATCH_WAIT_SECONDS = 8.0
+# LLM dispatch buffer: merges consecutive confirmed utterances into one larger,
+# more comprehensive explanation instead of firing on every single utterance.
+# MAX_DISPATCH_WAIT_SECONDS is the real driver — it sets the explanation
+# cadence (~every 25s). MIN_DISPATCH_WORDS is a safety cap, not the everyday
+# trigger: at typical speaking pace (~2.5 words/sec), 25s of continuous speech
+# is already ~60-65 words, so 80 sits above that and only fires early for
+# unusually dense/fast speech.
+MIN_DISPATCH_WORDS = 80
+MAX_DISPATCH_WAIT_SECONDS = 25.0
 
 
 async def dispatch_to_llm(text: str) -> None:
