@@ -3,61 +3,143 @@ from dotenv import load_dotenv
 import time
 import numpy as np
 from faster_whisper import WhisperModel  # type: ignore
+from faster_whisper.vad import get_speech_timestamps, VadOptions  # type: ignore
 from fastapi import FastAPI, WebSocket
 from fastapi.websockets import WebSocketDisconnect
 from contextlib import asynccontextmanager
 
+from llm import detect_jargon
+
 load_dotenv()
+
+SAMPLE_RATE = 16000  # must match the rate audio_processor.js resamples to
 
 # model
 print("Loading Whisper model...")
-model = WhisperModel(model_size_or_path="tiny", device="cpu", compute_type="int8")
+model = WhisperModel(model_size_or_path="base", device="cpu", compute_type="int8")
 print("Whisper model loaded and ready.")
 
 # instantiating asyncio queue
 audio_queue: asyncio.Queue[np.ndarray] = asyncio.Queue()
 
-# sentence buffer
-sentence_buffer: str = ""
+# VAD tuning: groups incoming audio into full spoken utterances by detecting
+# real pauses, instead of chopping transcripts at an arbitrary fixed duration.
+VAD_OPTIONS = VadOptions(
+    min_speech_duration_ms=250,  # discard blips/coughs shorter than this
+    min_silence_duration_ms=600,  # pause length that closes an utterance
+    max_speech_duration_s=15,  # force-split run-on speech that never pauses
+)
+
+# if no speech is detected at all for this long, drop the buffered silence
+# rather than let it grow unbounded
+MAX_IDLE_BUFFER_SECONDS = 5
+
+# LLM dispatch buffer: merges consecutive confirmed utterances so short/filler
+# ones (e.g. "No, no, no, no.") aren't sent to the LLM on their own. Dispatches
+# once there's enough content OR enough time has passed, whichever comes first.
+MIN_DISPATCH_WORDS = 12
+MAX_DISPATCH_WAIT_SECONDS = 8.0
 
 
-def is_sentence_boundary(text: str) -> bool:
-    """Check if text ends with a sentence boundary."""
-    return text.strip().endswith((".", "?", "!"))
+async def dispatch_to_llm(text: str) -> None:
+    """Sends merged transcript text to the LLM and logs the result.
+
+    Runs as a detached background task (see asyncio.create_task below), so
+    errors must be caught here — otherwise a failed call (bad key, no
+    credits, network error) would fail silently instead of surfacing.
+    """
+    try:
+        result = await detect_jargon(text)
+        print(f"LLM explanation: {result}")
+    except Exception as e:
+        print(f"LLM call failed: {e}")
+
+
+def flush_confirmed_segments(
+    buffer: np.ndarray,
+) -> tuple[list[np.ndarray], np.ndarray]:
+    """Runs VAD over `buffer` and splits off any utterances that are confirmed complete.
+
+    A segment is "confirmed" once we know it has actually ended rather than
+    just being cut off because no more audio has arrived yet. get_speech_timestamps
+    only leaves a segment's end sitting at the buffer's current end when it's
+    still mid-utterance and waiting for more audio — every other segment (closed
+    by a real pause OR by the max_speech_duration_s force-split) is already final.
+
+    Returns (confirmed utterance audio arrays, remaining unconfirmed buffer).
+    """
+    segments = get_speech_timestamps(buffer, VAD_OPTIONS, sampling_rate=SAMPLE_RATE)
+
+    if not segments:
+        # nothing detected at all — drop stale silence so the buffer doesn't grow forever
+        if len(buffer) > MAX_IDLE_BUFFER_SECONDS * SAMPLE_RATE:
+            return [], np.array([], dtype=np.float32)
+        return [], buffer
+
+    confirmed: list[np.ndarray] = []
+    last_confirmed_end = 0
+
+    for i, seg in enumerate(segments):
+        is_last = i == len(segments) - 1
+        if is_last and seg["end"] >= len(buffer):
+            break  # still might be growing — wait for more audio before trusting it
+        confirmed.append(buffer[seg["start"] : seg["end"]])
+        last_confirmed_end = seg["end"]
+
+    remaining = buffer[last_confirmed_end:]
+    return confirmed, remaining
 
 
 # transcription pipeline
 async def transcription_pipeline() -> None:
-    """Consumes audio chunks from the queue and transcribes them."""
-    global sentence_buffer
+    """Consumes audio chunks from the queue, groups them into full utterances via VAD,
+    transcribes each confirmed utterance, and dispatches merged text to the LLM."""
+
+    buffer: np.ndarray = np.array([], dtype=np.float32)
+    pending_text = ""
+    pending_since: float | None = None
 
     while True:
         # wait for a chunk to arrive from the queue
         chunk: np.ndarray = await audio_queue.get()
+        buffer = np.concatenate([buffer, chunk])
 
-        # timestamp before transcription
-        t_start = time.perf_counter()
+        confirmed_utterances, buffer = flush_confirmed_segments(buffer)
 
-        # transcribe the chunk
-        segments, _ = model.transcribe(chunk, language="en")  # type: ignore
-        transcript = " ".join([seg.text for seg in segments]).strip()
+        for utterance_audio in confirmed_utterances:
+            # timestamp before transcription
+            t_start = time.perf_counter()
 
-        # timestamp after transcription
-        t_end = time.perf_counter()
-        print(f"Transcription took {t_end - t_start:.2f}s — text: {transcript}")
+            # vad_filter skips any residual silence within the utterance, which
+            # otherwise gets transcribed into garbled or hallucinated text.
+            segments, _ = model.transcribe(utterance_audio, language="en", vad_filter=True)  # type: ignore
+            transcript = " ".join([seg.text for seg in segments]).strip()
 
-        if not transcript:
-            continue
+            # timestamp after transcription
+            t_end = time.perf_counter()
+            print(f"Transcription took {t_end - t_start:.2f}s — text: {transcript}")
 
-        # accumulate into sentence buffer
-        sentence_buffer += " " + transcript
+            if not transcript:
+                continue
 
-        # if we hit a sentence boundary, send to LLM layer
-        if is_sentence_boundary(sentence_buffer):
-            sentence = sentence_buffer.strip()
-            print(f"Complete sentence ready for LLM: {sentence}")
-            sentence_buffer = ""  # reset buffer
-            # TODO: pass sentence to LLM layer in Phase 4
+            pending_text = f"{pending_text} {transcript}".strip()
+            if pending_since is None:
+                pending_since = time.perf_counter()
+
+        # Checked every loop tick (not just when a new utterance completes) so a
+        # short pending utterance can't get stuck waiting through a long silence —
+        # audio chunks keep arriving roughly every 500ms even when no one's talking.
+        if pending_text:
+            word_count = len(pending_text.split())
+            waited_long_enough = (
+                pending_since is not None
+                and time.perf_counter() - pending_since >= MAX_DISPATCH_WAIT_SECONDS
+            )
+
+            if word_count >= MIN_DISPATCH_WORDS or waited_long_enough:
+                asyncio.create_task(dispatch_to_llm(pending_text))
+                pending_text = ""
+                pending_since = None
 
 
 # lifespan
