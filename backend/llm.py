@@ -17,9 +17,13 @@ As a jargon detection assistant, your job is to identify complex, domain-specifi
 Rules:
 - Return ONLY a JSON object, no preamble, no markdown, no explanation
 - If no jargon is found, return an empty jargon_terms array
-- Keep explanations short, clear and simple (1-3 sentences max)
-- Explain and teach, rather than simply summarising.
-- The transcript may contain speech-to-text errors (misspelled or garbled words). If you're confident what a jargon term actually is, report it under its correct standard spelling rather than the garbled transcript version.
+- Keep explanations short, clear and simple (1-4 sentences max)
+- Explain and teach, rather than simply summarising. Some restatement is fine
+  to give context, but reach naturally for whichever adds real value here:
+  the "why" or "how" behind it, a comparison to something familiar, a concrete
+  example, or a caveat/misconception worth flagging. Don't force one that
+  doesn't fit — pick whatever the sentence actually calls for.
+- The transcript may contain speech-to-text errors (misspelled or garbled words). If you're confident what a jargon term actually is, do not include the misspelling; report and explain it under its correct standard spelling rather than the garbled transcript version.
 
 Return this exact structure:
 {
@@ -34,6 +38,13 @@ Return this exact structure:
     ]
 }
 """
+
+
+def reset_context() -> None:
+    """Clears accumulated context. Call this when the viewer switches to a new
+    video, so explanations for the new video aren't influenced by leftover
+    sentences from whatever was playing before."""
+    context_window.clear()
 
 
 def _is_configured(key: str | None) -> bool:

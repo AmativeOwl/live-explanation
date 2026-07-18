@@ -16,6 +16,18 @@ const attachToVideo = (): void => {
 
   console.log("Video found, attaching audio capture...");
 
+  // Tell the backend this is a new video, so it resets any leftover LLM
+  // context/state from whatever was playing before.
+  chrome.runtime.sendMessage({ type: "NEW_VIDEO" });
+
+  // The audio graph below only needs to be built once per <video> element, but
+  // sites like YouTube reuse the same element across SPA navigations and just
+  // swap its source — "loadstart" fires on every one of those swaps, so this
+  // is what actually catches a viewer moving to a new video.
+  video.addEventListener("loadstart", () => {
+    chrome.runtime.sendMessage({ type: "NEW_VIDEO" });
+  });
+
   const audioContext = new AudioContext();
 
   // Ensure the AudioContext is running (may require user interaction in some cases)
