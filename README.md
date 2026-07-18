@@ -9,7 +9,7 @@ Video's audio  →  Chrome extension captures it  →  WebSocket  →  Backend
                                                                      │
                                                           faster-whisper transcribes
                                                                      │
-                                                            (LLM explanation — coming soon)
+                                                            LLM explanation
 ```
 
 - `frontend/extension/` — the Chrome extension. Taps a video's audio without touching playback, and streams it to the backend.
@@ -29,7 +29,7 @@ cd backend
 uv sync 
 uv run uvicorn main:app --reload --port 8000
 ```
-uv sync downloads needed libraries, and uv run executes backend
+uv sync downloads needed libraries, and uv run executes backend.
 Wait for `Whisper model loaded and ready.` in the terminal — that means it's up. **Keep this terminal open**; it streams live transcription output while you test, so open a separate terminal tab for anything else.
 
 The first run downloads the Whisper model weights, which takes a moment.
@@ -91,3 +91,7 @@ Contains a button to adjust latency, which determines
 how fast they want explanations. High latency = more accumulated context per LLM message and slower speeds
 
 Perhaps we can add a translation button.
+
+## Things to add
+
+- **Split `explanation` into two fields.** Right now one field has to be both a quick, plain-language summary of what's being said *and* carry deeper insight (why/how, comparisons, caveats) — those two goals fight each other. Add a second field (e.g. `comment`/`insight`) dedicated to the deeper analysis, so `explanation` can stay short and plain while the new field does the teaching. Like `jargon_terms`, it should be allowed to come back empty on sentences that genuinely have nothing deeper to add (e.g. administrative/logistics lines) rather than forcing manufactured insight. Needs a backend prompt/schema change plus a frontend change to display the new field.

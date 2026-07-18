@@ -1,4 +1,5 @@
 import asyncio
+import json
 from dotenv import load_dotenv
 import time
 import numpy as np
@@ -8,7 +9,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.websockets import WebSocketDisconnect
 from contextlib import asynccontextmanager
 
-from llm import detect_jargon
+from llm import detect_jargon, reset_context
 
 load_dotenv()
 
@@ -19,8 +20,32 @@ print("Loading Whisper model...")
 model = WhisperModel(model_size_or_path="base", device="cpu", compute_type="int8")
 print("Whisper model loaded and ready.")
 
+
+class _ResetSignal:
+    """Sentinel put on audio_queue to mark a viewer switching to a new video.
+    Distinct from np.ndarray so transcription_pipeline() can tell it apart
+    from a real audio chunk without ambiguity."""
+
+
+RESET_SIGNAL = _ResetSignal()
+
 # instantiating asyncio queue
-audio_queue: asyncio.Queue[np.ndarray] = asyncio.Queue()
+audio_queue: asyncio.Queue[np.ndarray | _ResetSignal] = asyncio.Queue()
+
+# WebSocket clients currently listening for explanations (the React frontend)
+frontend_clients: set[WebSocket] = set()
+
+
+async def broadcast_to_frontend(payload: dict[str, object]) -> None:
+    """Sends a JSON payload to every connected frontend client."""
+    dead: list[WebSocket] = []
+    for client in frontend_clients:
+        try:
+            await client.send_json(payload)
+        except Exception:
+            dead.append(client)
+    for client in dead:
+        frontend_clients.discard(client)
 
 # VAD tuning: groups incoming audio into full spoken utterances by detecting
 # real pauses, instead of chopping transcripts at an arbitrary fixed duration.
@@ -55,6 +80,7 @@ async def dispatch_to_llm(text: str) -> None:
     try:
         result = await detect_jargon(text)
         print(f"LLM explanation: {result}")
+        await broadcast_to_frontend(result)
     except Exception as e:
         print(f"LLM call failed: {e}")
 
@@ -72,7 +98,13 @@ def flush_confirmed_segments(
 
     Returns (confirmed utterance audio arrays, remaining unconfirmed buffer).
     """
-    segments = get_speech_timestamps(buffer, VAD_OPTIONS, sampling_rate=SAMPLE_RATE)
+    # get_speech_timestamps is only loosely typed upstream (-> List[dict]); this
+    # annotation reflects the actual {"start": int, "end": int} shape (sample
+    # indices) confirmed from faster_whisper/vad.py, so downstream uses of
+    # `seg["start"]`/`seg["end"]` are properly typed instead of Unknown.
+    segments: list[dict[str, int]] = get_speech_timestamps( # type: ignore
+        buffer, VAD_OPTIONS, sampling_rate=SAMPLE_RATE
+    )
 
     if not segments:
         # nothing detected at all — drop stale silence so the buffer doesn't grow forever
@@ -104,8 +136,20 @@ async def transcription_pipeline() -> None:
     pending_since: float | None = None
 
     while True:
-        # wait for a chunk to arrive from the queue
-        chunk: np.ndarray = await audio_queue.get()
+        # wait for a chunk (or a new-video reset signal) to arrive from the queue
+        item = await audio_queue.get()
+
+        if isinstance(item, _ResetSignal):
+            # viewer switched to a new video — drop all in-progress state so
+            # nothing from the previous video bleeds into the new one
+            buffer = np.array([], dtype=np.float32)
+            pending_text = ""
+            pending_since = None
+            reset_context()
+            print("New video detected — pipeline state reset.")
+            continue
+
+        chunk: np.ndarray = item
         buffer = np.concatenate([buffer, chunk])
 
         confirmed_utterances, buffer = flush_confirmed_segments(buffer)
@@ -165,39 +209,46 @@ async def status() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# WebSocket - React frontend
+# WebSocket - Chrome Extension (audio in, plus control messages like "new video")
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket) -> None:
-    """Accepts WebSocket connections from the React frontend."""
-    await websocket.accept()
-    print("React frontend connected.")
-    try:
-        while True:
-            # receive raw audio bytes from frontend
-            data: bytes = await websocket.receive_bytes()
-
-            # convert bytes to numpy array and add to queue
-            chunk = np.frombuffer(data, dtype=np.float32)
-            await audio_queue.put(chunk)
-
-    except WebSocketDisconnect:
-        print("React frontend disconnected.")
-
-
-# WebSocket - Chrome Extension
-@app.websocket("/audio")
 async def audio_endpoint(websocket: WebSocket) -> None:
-    """Accepts WebSocket connections from the Chrome Extension."""
+    """Accepts WebSocket connections from the Chrome Extension.
+
+    Two kinds of messages arrive here: binary frames (raw audio bytes) and
+    text frames (JSON control messages, e.g. {"type": "new_video"} sent when
+    the viewer switches to a different video).
+    """
     await websocket.accept()
     print("Chrome extension connected.")
     try:
         while True:
-            # receive raw audio bytes from extension
-            data: bytes = await websocket.receive_bytes()
+            message = await websocket.receive()
 
-            # convert bytes to numpy array and add to queue
-            chunk = np.frombuffer(data, dtype=np.float32)
-            await audio_queue.put(chunk)
+            if "bytes" in message and message["bytes"] is not None:
+                chunk = np.frombuffer(message["bytes"], dtype=np.float32)
+                await audio_queue.put(chunk)
+
+            elif "text" in message and message["text"] is not None:
+                control = json.loads(message["text"])
+                if control.get("type") == "new_video":
+                    await audio_queue.put(RESET_SIGNAL)
 
     except WebSocketDisconnect:
         print("Chrome extension disconnected.")
+
+
+# WebSocket - React frontend (explanations out)
+@app.websocket("/explanations")
+async def explanations_endpoint(websocket: WebSocket) -> None:
+    """Accepts WebSocket connections from the React frontend and streams
+    LLM explanations to it as they're produced. The frontend doesn't send
+    anything meaningful here — this is a broadcast-only channel."""
+    await websocket.accept()
+    frontend_clients.add(websocket)
+    print("React frontend connected.")
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        frontend_clients.discard(websocket)
+        print("React frontend disconnected.")

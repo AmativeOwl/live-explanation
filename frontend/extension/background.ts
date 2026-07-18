@@ -27,6 +27,12 @@ chrome.runtime.onMessage.addListener((message): void => {
     } else {
       console.log("WebSocket not ready, dropping chunk");
     }
+  } else if (message.type === "NEW_VIDEO") {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "new_video" }));
+    } else {
+      console.log("WebSocket not ready, dropping new_video signal");
+    }
   }
 });
 
