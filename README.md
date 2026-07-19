@@ -87,6 +87,8 @@ Use a **separate Chrome profile** for testing, not your main one — this extens
 Attaches itself to videos in full screen, acts as a sidebar
 outside of full screen independent of the video.
 
+You should be able to scroll upwards towards older explanations. 
+
 Contains a button to adjust latency, which determines
 how fast they want explanations. High latency = more accumulated context per LLM message and slower speeds
 
