@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "build:extension": "tsc --project extension/tsconfig.json"
+    "build:extension": "tsc --project extension/tsconfig.json && vite build --config vite.extension.config.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.1",
