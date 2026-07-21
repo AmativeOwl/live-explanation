@@ -14,7 +14,7 @@ Video's audio  →  Chrome extension captures it  →  WebSocket  →  Backend
 
 - `frontend/extension/` — the Chrome extension. Taps a video's audio without touching playback, and streams it to the backend.
 - `backend/` — a FastAPI server. Receives audio, transcribes it with faster-whisper, and (in progress) sends it to an LLM for jargon detection.
-- `frontend/src/` — the React app that will render the sidebar/overlay UI.
+- `frontend/src/` — the React app rendering the sidebar/overlay UI. Bundled into the extension via `content_script.tsx`, which mounts it directly into the page.
 
 ## Prerequisites
 
@@ -72,15 +72,15 @@ Use a **separate Chrome profile** for testing, not your main one — this extens
 | `backend/*.py`                                    | Restart uvicorn (or save — `--reload` restarts it for you)                      |
 | `extension/content_script.tsx` or `background.ts` | Re-run `npm run build:extension`, then reload the extension in `chrome://extensions`, then refresh the video page |
 | `extension/audio_processor.js`                    | Reload the extension in `chrome://extensions`, then refresh the video page (no build needed) |
-| `frontend/src/*` (the React sidebar app)           | N/A yet — not wired up to the extension                                          |
+| `frontend/src/*` (the React sidebar app)           | It's bundled into `content_script.js` by `content_script.tsx`'s import — re-run `npm run build:extension`, then reload the extension and refresh the video page, same as editing the content script itself. `npm run dev` (the standalone page at `localhost:5173`) is only for previewing UI changes quickly — it's not what the extension actually loads |
 
 ## Project status
 
 - ✅ Audio capture (extension → backend over WebSocket)
 - ✅ Real-time transcription (faster-whisper, `base` model, VAD-filtered)
 - ✅ LLM jargon detection (with space for possible improvements)
-- 🚧 Streaming explanations back to the frontend
-- 🚧 React sidebar/overlay UI
+- ✅ Streaming explanations back to the frontend
+- ✅ React panel mounted into the page, reparenting into fullscreen (basic version — no styling/positioning polish yet)
 
 ## How the frotend may look like (The goal)
 
@@ -97,3 +97,5 @@ Perhaps we can add a translation button.
 ## Things to add
 
 - **Split `explanation` into two fields.** Right now one field has to be both a quick, plain-language summary of what's being said *and* carry deeper insight (why/how, comparisons, caveats) — those two goals fight each other. Add a second field (e.g. `comment`/`insight`) dedicated to the deeper analysis, so `explanation` can stay short and plain while the new field does the teaching. Like `jargon_terms`, it should be allowed to come back empty on sentences that genuinely have nothing deeper to add (e.g. administrative/logistics lines) rather than forcing manufactured insight. Needs a backend prompt/schema change plus a frontend change to display the new field.
+
+- **Give the frontend real control over its own connection to the pipeline, not just a fire-and-forget socket.** `App.tsx` opens its WebSocket to `/explanations` once on mount and never retries — if the backend isn't up yet when the page loads, or the connection drops, the panel is stuck silently until the page is refreshed. Compare to `background.ts`'s audio socket, which already reconnects every 3s on close. Once the panel is a real UI (not just a test page), this should go further than "add a retry loop": surface connection state to the user (connected / reconnecting / backend unreachable) so they know *why* explanations stopped, and once the latency-adjustment button from the goals section exists, that's also "control of the pipeline" that needs a real channel from frontend → backend (currently there's no frontend → backend messaging at all, only backend → frontend).
