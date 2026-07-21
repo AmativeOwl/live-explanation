@@ -1,6 +1,41 @@
 /// <reference types="chrome"/>
+import { createRoot } from "react-dom/client";
+import App from "../src/App";
 
 let isAttached = false;
+let uiMounted = false;
+
+const mountUI = (): void => {
+  if (uiMounted) return;
+  uiMounted = true;
+
+  const container = document.createElement("div");
+  container.id = "live-explanation-root";
+  container.style.position = "fixed";
+  container.style.top = "50%";
+  container.style.right = "16px";
+  container.style.transform = "translateY(-50%)";
+  container.style.zIndex = "999999";
+  container.style.maxWidth = "320px";
+  container.style.maxHeight = "60vh";
+  container.style.overflowY = "auto";
+  container.style.background = "rgba(20, 20, 20, 0.85)";
+  container.style.color = "#fff";
+  container.style.padding = "12px";
+  container.style.borderRadius = "8px";
+  container.style.fontFamily = "sans-serif";
+  document.body.appendChild(container);
+
+  createRoot(container).render(<App />); 
+
+  // Fullscreen hides all normal page chrome except whatever lives inside
+  // the fullscreen element itself, so the panel has to physically move
+  // there to stay visible — then move back once fullscreen exits.
+  document.addEventListener("fullscreenchange", () => {
+    const target = document.fullscreenElement ?? document.body;
+    target.appendChild(container);
+  });
+};
 
 const attachToVideo = (): void => {
   if (isAttached) return;
@@ -66,6 +101,7 @@ const attachToVideo = (): void => {
 };
 
 // Run when page loads
+mountUI();
 attachToVideo();
 
 // Observe DOM changes to handle dynamically added video elements (e.g. YouTube SPA)
