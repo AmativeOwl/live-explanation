@@ -224,6 +224,9 @@ async def audio_endpoint(websocket: WebSocket) -> None:
         while True:
             message = await websocket.receive()
 
+            if message["type"] == "websocket.disconnect":
+                raise WebSocketDisconnect(message.get("code", 1000))
+
             if "bytes" in message and message["bytes"] is not None:
                 chunk = np.frombuffer(message["bytes"], dtype=np.float32)
                 await audio_queue.put(chunk)

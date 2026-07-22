@@ -59,14 +59,36 @@ const attachToVideo = (): void => {
   // sites like YouTube reuse the same element across SPA navigations and just
   // swap its source — "loadstart" fires on every one of those swaps, so this
   // is what actually catches a viewer moving to a new video.
+  //
+  // YouTube's adaptive streaming (MediaSource Extensions) reassigns the
+  // element's source internally during quality negotiation, ads, and even
+  // seeking to an unbuffered position — each of those fires its own
+  // "loadstart" too, so a single real video can produce a burst of several
+  // in quick succession. Debounce so a burst collapses into one reset
+  // instead of resetting the pipeline several times over.
+  let loadstartDebounce: ReturnType<typeof setTimeout> | null = null;
   video.addEventListener("loadstart", () => {
-    chrome.runtime.sendMessage({ type: "NEW_VIDEO" });
+    if (loadstartDebounce) clearTimeout(loadstartDebounce);
+    loadstartDebounce = setTimeout(() => {
+      chrome.runtime.sendMessage({ type: "NEW_VIDEO" });
+    }, 1000);
   });
 
   const audioContext = new AudioContext();
 
-  // Ensure the AudioContext is running (may require user interaction in some cases)
+  // Chrome suspends a new AudioContext unless resume() runs as a direct
+  // result of a real user gesture (click, key press, etc). Calling it here
+  // unconditionally works only when Chrome's per-site engagement heuristics
+  // happen to allow it — tying it to the page's first click makes it work
+  // reliably regardless of that.
   audioContext.resume();
+  document.addEventListener(
+    "click",
+    () => {
+      audioContext.resume();
+    },
+    { once: true }
+  );
 
   const source: MediaElementAudioSourceNode =
     audioContext.createMediaElementSource(video);
