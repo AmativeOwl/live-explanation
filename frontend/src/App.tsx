@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 type Explanation = {
   original_text: string,
   explanation: string,
+  insight: string,
   jargon_terms: {
     term: string,
     explanation: string,
@@ -22,6 +23,11 @@ function ExplanationCard({ item }: { item: Explanation }) {
             </li>
           ))}
         </ul>
+      )}
+      {item.insight && (
+        <p style={{ fontSize: '15px', margin: '8px 0 0 0', fontStyle: 'italic', color: '#d1d5db' }}>
+          💡 {item.insight}
+        </p>
       )}
     </div>
   )

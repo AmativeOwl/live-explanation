@@ -81,6 +81,7 @@ Use a **separate Chrome profile** for testing, not your main one — this extens
 - ✅ LLM jargon detection (with space for possible improvements)
 - ✅ Streaming explanations back to the frontend
 - ✅ React panel mounted into the page, reparenting into fullscreen (basic version — no styling/positioning polish yet)
+- ✅ `insight` field — a second, optional layer of analysis (why/how, comparison, example, caveat) separate from the plain `explanation`
 
 ## How the frotend may look like (The goal)
 
@@ -95,7 +96,5 @@ how fast they want explanations. High latency = more accumulated context per LLM
 Perhaps we can add a translation button.
 
 ## Things to add
-
-- **Split `explanation` into two fields.** Right now one field has to be both a quick, plain-language summary of what's being said *and* carry deeper insight (why/how, comparisons, caveats) — those two goals fight each other. Add a second field (e.g. `comment`/`insight`) dedicated to the deeper analysis, so `explanation` can stay short and plain while the new field does the teaching. Like `jargon_terms`, it should be allowed to come back empty on sentences that genuinely have nothing deeper to add (e.g. administrative/logistics lines) rather than forcing manufactured insight. Needs a backend prompt/schema change plus a frontend change to display the new field.
 
 - **Give the frontend real control over its own connection to the pipeline, not just a fire-and-forget socket.** `App.tsx` opens its WebSocket to `/explanations` once on mount and never retries — if the backend isn't up yet when the page loads, or the connection drops, the panel is stuck silently until the page is refreshed. Compare to `background.ts`'s audio socket, which already reconnects every 3s on close. Once the panel is a real UI (not just a test page), this should go further than "add a retry loop": surface connection state to the user (connected / reconnecting / backend unreachable) so they know *why* explanations stopped, and once the latency-adjustment button from the goals section exists, that's also "control of the pipeline" that needs a real channel from frontend → backend (currently there's no frontend → backend messaging at all, only backend → frontend).
