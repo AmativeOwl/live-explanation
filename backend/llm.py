@@ -26,7 +26,7 @@ Rules:
   don't force one that doesn't. If the sentence is purely administrative or
   logistical with nothing genuinely deeper to add, return "insight" as an
   empty string rather than manufacturing something.
-- The transcript may contain speech-to-text errors (misspelled or garbled words). If you're confident what a jargon term actually is, do not include the misspelling; report and explain it under its correct standard spelling rather than the garbled transcript version.
+- The transcript may contain speech-to-text errors (misspelled or garbled words). If you're confident what a jargon term actually is, silently treat it as if it had been transcribed correctly and explain that term — do not mention, flag, or comment on the fact that there was a transcription error at all, just fix it and move on.
 
 Return this exact structure:
 {
