@@ -39,19 +39,41 @@ function App(){
   const [collapsed, setCollapsed] = useState(false)
 
   useEffect(() => {
-    const web_socket = new WebSocket('ws://localhost:8000/explanations')
+    let socket: WebSocket
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let reconnectDelay = 1000
+    const maxReconnectDelay = 30000
+    let cancelled = false
 
-    web_socket.onopen = () => {
-      console.log('Connected to backend')
+    const connect = () => {
+      socket = new WebSocket('ws://localhost:8000/explanations')
+
+      socket.onopen = () => {
+        console.log('Connected to backend')
+        reconnectDelay = 1000 // back to the short delay after a real success
+      }
+
+      socket.onmessage = (event) => {
+        const data: Explanation = JSON.parse(event.data)
+        setExplanations((prev) => [...prev, data])
+      }
+
+      // Backs off exponentially (1s, 2s, 4s, ... capped at 30s) instead of
+      // retrying on a fixed interval, so a sustained backend outage doesn't
+      // mean hammering it with a new connection attempt every few seconds.
+      socket.onclose = () => {
+        if (cancelled) return
+        reconnectTimer = setTimeout(connect, reconnectDelay)
+        reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay)
+      }
     }
 
-    web_socket.onmessage = (event) => {
-      const data: Explanation = JSON.parse(event.data)
-      setExplanations((prev) => [...prev, data])
-    }
+    connect()
 
     return () => {
-      web_socket.close()
+      cancelled = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      socket.close()
     }
   }, [])
 
