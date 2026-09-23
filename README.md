@@ -99,17 +99,10 @@ Use a **separate Chrome profile** for testing, not your main one — this extens
 - ✅ `insight` field — a second, optional layer of analysis (why/how, comparison, example, caveat) separate from the plain `explanation`
 - ✅ Resilience fixes: clean WebSocket disconnect handling on the backend (no more `RuntimeError` crashes when the extension disconnects), debounced "new video" detection (YouTube's adaptive streaming can fire several spurious source-reload events in a row for ads/quality switches/seeking, not just real navigation), `AudioContext` resume tied to a real user gesture instead of relying on the browser's autoplay heuristics, and exponential-backoff reconnection for the frontend's `/explanations` socket
 
-## How the frotend may look like (The goal)
+## How the frotend looks like 
 
 Attaches itself to videos in full screen, acts as a sidebar
-outside of full screen independent of the video.
-
-You should be able to scroll upwards towards older explanations. 
-
-Contains a button to adjust latency, which determines
-how fast they want explanations. High latency = more accumulated context per LLM message and slower speeds
-
-Perhaps we can add a translation button.
+outside of full screen independent of the video. Transparent overlay, and allows user to read older explanations when scrolling down.
 
 ## Things to add
 
